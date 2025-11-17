@@ -103,7 +103,7 @@ import pickle
 
 from sklearn.pipeline import Pipeline
 from sklearn.feature_selection import SelectKBest, f_classif
-from sklearn.preprocessing import OneHotEncoder, MinMaxScaler, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.svm import SVC
 from sklearn.compose import ColumnTransformer
@@ -136,8 +136,10 @@ def preprocess_data(df, set_name):
     # Eliminar registros con informacion no disponible
     df = df.dropna()
 
-    # Agrupar valores de EDUCATION > 4
-    df["EDUCATION"] = df["EDUCATION"].apply(lambda x: x if x < 4 else 4)
+    # Eliminar valores = 0
+    # y agrupar valores de EDUCATION > 4
+    df = df[(df["EDUCATION"] != 0) & (df["MARRIAGE"] != 0)]
+    df["EDUCATION"] = df["EDUCATION"].apply(lambda x: x if x <= 4 else 4)
 
     print(f"Preprocesamiento de datos {set_name} completado")
 
@@ -156,13 +158,16 @@ def split_features_target(df, target_name):
 def pipeline_definition(df):
     # Definir las variables categóricas y numéricas
     categorical_features = ["EDUCATION", "MARRIAGE", "SEX"]
-    numerical_features = df.columns.difference(categorical_features).tolist()
+    numerical_features = [feat for feat in df.columns if feat not in categorical_features]
+
+    print("Variables categóricas: " + str(categorical_features))
+    print("Variables numéricas: " + str(numerical_features))
 
     # Crear el preprocesador
     preprocessor = ColumnTransformer(
         transformers=[
             ("cat", OneHotEncoder(handle_unknown="ignore"), categorical_features),
-            ("num", MinMaxScaler(), numerical_features),
+            ("num", StandardScaler(), numerical_features),
         ]
     )
 
@@ -175,10 +180,9 @@ def pipeline_definition(df):
     pipeline = Pipeline(
         steps=[
             ("preprocessor", preprocessor),
-            ("std", StandardScaler()),
             ("pca", PCA()),
             ("feature_selection", SelectKBest(score_func=f_classif)),
-            ("classifier", SVC(random_state=42)),
+            ("classifier", SVC(kernel="rbf", random_state=123)),
         ]
     )
 
@@ -189,11 +193,10 @@ def pipeline_definition(df):
 
 def hyperparameter_optimization(pipeline, X_train, y_train):
     param_grid = {
-        "pca__n_components": [20, X_train.shape[1]],
-        "feature_selection__k": list(range(1, X_train.shape[1] + 1)),
-        #"classifier__C": [0.01, 0.1, 1, 10, 100],
-        "classifier__kernel": ["rbf", "linear"],
-        #"classifier__gamma": ["scale", "auto"],
+        "pca__n_components": [20, 21],
+        "feature_selection__k": [12],
+        "classifier__kernel": ["rbf"],
+        "classifier__gamma": [0.1],
     }
 
     grid_search = GridSearchCV(
